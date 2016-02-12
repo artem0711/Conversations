@@ -193,6 +193,7 @@
 	<string name="server_info_stream_management">XEP-0198: Stream Management</string>
 	<string name="server_info_pep">XEP-0163: PEP (Avatars / OMEMO)</string>
 	<string name="server_info_http_upload">XEP-0363: HTTP File Upload</string>
+	<string name="server_info_push">XEP-0357: Push</string>
 	<string name="server_info_available">available</string>
 	<string name="server_info_unavailable">unavailable</string>
 	<string name="missing_public_keys">Missing public key announcements</string>
@@ -242,6 +243,7 @@
 	<string name="you">You</string>
 	<string name="action_edit_subject">Edit conference subject</string>
 	<string name="conference_not_found">Conference not found</string>
+	<string name="conference_unknown_error">Unknown error received</string>2
 	<string name="leave">Leave</string>
 	<string name="contact_added_you">Contact added you to contact list</string>
 	<string name="add_back">Add back</string>
@@ -330,6 +332,8 @@
 	<string name="pref_expert_options_other">Other</string>
 	<string name="pref_conference_name">Conference name</string>
 	<string name="pref_conference_name_summary">Use room’s subject instead of JID to identify conferences</string>
+	<string name="pref_autojoin">Automatically join conferences</string>
+	<string name="pref_autojoin_summary">Respect the autojoin flag in conference bookmarks</string>
 	<string name="toast_message_otr_fingerprint">OTR fingerprint copied to clipboard!</string>
 	<string name="toast_message_omemo_fingerprint">OMEMO fingerprint copied to clipboard!</string>
 	<string name="conference_banned">You are banned from this conference</string>
@@ -529,9 +533,15 @@
 	<string name="pref_away_when_screen_off_summary">Marks your resource as away when the screen is turned off</string>
 	<string name="pref_xa_on_silent_mode">Not available in silent mode</string>
 	<string name="pref_xa_on_silent_mode_summary">Marks your resource as not available when device is in silent mode</string>
+	<string name="pref_show_connection_options">Extended connection options</string>
+	<string name="pref_show_connection_options_summary">Show hostname and port options when setting up an account</string>
+	<string name="hostname_example">xmpp.example.com</string>
 	<string name="action_add_account_with_certificate">Add account with certificate</string>
 	<string name="unable_to_parse_certificate">Unable to parse certificate</string>
 	<string name="authenticate_with_certificate">Leave empty to authenticate w/ certificate</string>
+	<string name="mam_prefs">Archiving preferences</string>
+	<string name="fetching_mam_prefs">Fetching archiving preferences. Please wait…</string>
+	<string name="unable_to_fetch_mam_prefs">Unable to fetch archiving preferences</string>
 	<string name="captcha_ocr">Captcha text</string>
 	<string name="captcha_required">Captcha required</string>
 	<string name="captcha_hint">enter the text from the image</string>
@@ -554,6 +564,7 @@
 		<item quantity="one">%d message</item>
 		<item quantity="other">%d messages</item>
 	</plurals>
+	<string name="load_more_messages">Load more messages</string>
 	<string name="shared_file_with_x">Shared file with %s</string>
 	<string name="shared_image_with_x">Shared image with %s</string>
 	<string name="no_storage_permission">Conversations need access to external storage</string>
@@ -581,4 +592,5 @@
 	<string name="disable">Disable</string>
 	<string name="selection_too_large">The selected area is too large</string>
 	<string name="no_accounts">(No activated accounts)</string>
+	<string name="this_field_is_required">This field is required</string>
 </resources>
