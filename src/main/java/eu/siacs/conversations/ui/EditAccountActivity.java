@@ -686,9 +686,9 @@ public class EditAccountActivity extends XmppActivity implements OnAccountUpdate
 				this.mServerInfoHttpUpload.setText(R.string.server_info_unavailable);
 			}
 
-			this.mPushRow.setVisibility(xmppConnectionService.getPushManagementService().available() ? View.VISIBLE : View.GONE);
+			this.mPushRow.setVisibility(xmppConnectionService.getPushManagementService().isStub() ? View.GONE : View.VISIBLE);
 
-			if (features.push()) {
+			if (xmppConnectionService.getPushManagementService().available(mAccount)) {
 				this.mServerInfoPush.setText(R.string.server_info_available);
 			} else {
 				this.mServerInfoPush.setText(R.string.server_info_unavailable);
@@ -918,7 +918,7 @@ public class EditAccountActivity extends XmppActivity implements OnAccountUpdate
 					mFetchingMamPrefsToast.cancel();
 				}
 				AlertDialog.Builder builder = new Builder(EditAccountActivity.this);
-				builder.setTitle(R.string.mam_prefs);
+				builder.setTitle(R.string.server_side_mam_prefs);
 				String defaultAttr = prefs.getAttribute("default");
 				final List<String> defaults = Arrays.asList("never", "roster", "always");
 				final AtomicInteger choice = new AtomicInteger(Math.max(0,defaults.indexOf(defaultAttr)));

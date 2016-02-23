@@ -259,6 +259,9 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 			fetchRosterFromServer(account);
 			fetchBookmarks(account);
 			sendPresence(account);
+			if (mPushManagementService.available(account)) {
+				mPushManagementService.registerPushTokenOnServer(account);
+			}
 			mMessageArchiveService.executePendingQueries(account);
 			connectMultiModeConversations(account);
 			syncDirtyContacts(account);
@@ -284,8 +287,11 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 				}
 				List<Conversation> conversations = getConversations();
 				for (Conversation conversation : conversations) {
-					if (conversation.getAccount() == account && conversation.getMode() == Conversation.MODE_SINGLE) {
-						conversation.startOtrIfNeeded();
+					if (conversation.getAccount() == account
+							&& !account.pendingConferenceJoins.contains(conversation)) {
+						if (!conversation.startOtrIfNeeded()) {
+							Log.d(Config.LOGTAG,account.getJid().toBareJid()+": couldn't start OTR with "+conversation.getContact().getJid()+" when needed");
+						}
 						sendUnsentMessages(conversation);
 					}
 				}
@@ -298,14 +304,14 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 				}
 				account.pendingConferenceJoins.clear();
 				scheduleWakeUpCall(Config.PING_MAX_INTERVAL, account.getUuid().hashCode());
-
-				if (mPushManagementService.pushAvailable(account)) {
-					mPushManagementService.registerPushTokenOnServer(account);
-				}
-
 			} else if (account.getStatus() == Account.State.OFFLINE) {
 				resetSendingToWaiting(account);
-				if (!account.isOptionSet(Account.OPTION_DISABLED)) {
+				final boolean disabled = account.isOptionSet(Account.OPTION_DISABLED);
+				final boolean pushMode = Config.CLOSE_TCP_WHEN_SWITCHING_TO_BACKGROUND
+						&& mPushManagementService.available(account)
+						&& checkListeners();
+				Log.d(Config.LOGTAG,account.getJid().toBareJid()+": push mode "+Boolean.toString(pushMode));
+				if (!disabled && !pushMode) {
 					int timeToReconnect = mRandom.nextInt(20) + 10;
 					scheduleWakeUpCall(timeToReconnect, account.getUuid().hashCode());
 				}
@@ -764,16 +770,18 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 						disconnect(account, false);
 					}
 				}).start();
-
+				cancelWakeUpCall(account.getUuid().hashCode());
 			}
 		}
-		Context context = getApplicationContext();
-		AlarmManager alarmManager = (AlarmManager) context
-				.getSystemService(Context.ALARM_SERVICE);
-		Intent intent = new Intent(context, EventReceiver.class);
-		alarmManager.cancel(PendingIntent.getBroadcast(context, 0, intent, 0));
 		Log.d(Config.LOGTAG, "good bye");
 		stopSelf();
+	}
+
+	private void cancelWakeUpCall(int requestCode) {
+		final AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+		final Intent intent = new Intent(this, EventReceiver.class);
+		intent.setAction("ping");
+		alarmManager.cancel(PendingIntent.getBroadcast(this, requestCode, intent, 0));
 	}
 
 	public void scheduleWakeUpCall(int seconds, int requestCode) {
@@ -835,8 +843,9 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 		final Conversation conversation = message.getConversation();
 		account.deactivateGracePeriod();
 		MessagePacket packet = null;
-		final boolean addToConversation = conversation.getMode() != Conversation.MODE_MULTI
-				|| account.getServerIdentity() != XmppConnection.Identity.SLACK;
+		final boolean addToConversation = (conversation.getMode() != Conversation.MODE_MULTI
+				|| account.getServerIdentity() != XmppConnection.Identity.SLACK)
+				&& !message.edited();
 		boolean saveInDb = addToConversation;
 		message.setStatus(Message.STATUS_WAITING);
 
@@ -893,8 +902,11 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 						if (message.fixCounterpart()) {
 							conversation.startOtrSession(message.getCounterpart().getResourcepart(), true);
 						} else {
+							Log.d(Config.LOGTAG,account.getJid().toBareJid()+": could not fix counterpart for OTR message to contact "+message.getContact().getJid());
 							break;
 						}
+					} else {
+						Log.d(Config.LOGTAG,account.getJid().toBareJid()+" OTR session with "+message.getContact()+" is in wrong state: "+otrSession.getSessionStatus().toString());
 					}
 					break;
 				case Message.ENCRYPTION_AXOLOTL:
@@ -939,6 +951,7 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 					break;
 				case Message.ENCRYPTION_OTR:
 					if (!conversation.hasValidOtrSession() && message.getCounterpart() != null) {
+						Log.d(Config.LOGTAG,account.getJid().toBareJid()+": create otr session without starting for "+message.getContact().getJid());
 						conversation.startOtrSession(message.getCounterpart().getResourcepart(), false);
 					}
 					break;
@@ -960,8 +973,12 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 			if (addToConversation) {
 				conversation.add(message);
 			}
-			if (saveInDb && (message.getEncryption() == Message.ENCRYPTION_NONE || saveEncryptedMessages())) {
-				databaseBackend.createMessage(message);
+			if (message.getEncryption() == Message.ENCRYPTION_NONE || saveEncryptedMessages()) {
+				if (saveInDb) {
+					databaseBackend.createMessage(message);
+				} else if (message.edited()) {
+					databaseBackend.updateMessage(message, message.getEditedId());
+				}
 			}
 			updateConversationUi();
 		}
@@ -1721,8 +1738,14 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 		for (Account account : getAccounts()) {
 			if (account.getStatus() == Account.State.ONLINE) {
 				XmppConnection connection = account.getXmppConnection();
-				if (connection != null && connection.getFeatures().csi()) {
-					connection.sendInactive();
+				if (connection != null) {
+					if (connection.getFeatures().csi()) {
+						connection.sendInactive();
+					}
+					if (Config.CLOSE_TCP_WHEN_SWITCHING_TO_BACKGROUND && mPushManagementService.available(account)) {
+						connection.waitForPush();
+						cancelWakeUpCall(account.getUuid().hashCode());
+					}
 				}
 			}
 		}
@@ -1734,20 +1757,20 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 		List<Conversation> conversations = getConversations();
 		for (Conversation conversation : conversations) {
 			if (conversation.getMode() == Conversation.MODE_MULTI && conversation.getAccount() == account) {
-				joinMuc(conversation, true, null);
+				joinMuc(conversation);
 			}
 		}
 	}
 
 	public void joinMuc(Conversation conversation) {
-		joinMuc(conversation, false, null);
+		joinMuc(conversation, null);
 	}
 
-	private void joinMuc(Conversation conversation, boolean now, final OnConferenceJoined onConferenceJoined) {
+	private void joinMuc(Conversation conversation, final OnConferenceJoined onConferenceJoined) {
 		Account account = conversation.getAccount();
 		account.pendingConferenceJoins.remove(conversation);
 		account.pendingConferenceLeaves.remove(conversation);
-		if (account.getStatus() == Account.State.ONLINE || now) {
+		if (account.getStatus() == Account.State.ONLINE) {
 			conversation.resetMucOptions();
 			fetchConferenceConfiguration(conversation, new OnConferenceConfigurationFetched() {
 
@@ -1926,7 +1949,7 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 				String name = new BigInteger(75, getRNG()).toString(32);
 				Jid jid = Jid.fromParts(name, server, null);
 				final Conversation conversation = findOrCreateConversation(account, jid, true);
-				joinMuc(conversation, true, new OnConferenceJoined() {
+				joinMuc(conversation, new OnConferenceJoined() {
 					@Override
 					public void onConferenceJoined(final Conversation conversation) {
 						Bundle options = new Bundle();
@@ -2592,6 +2615,10 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 		return getPreferences().getBoolean("confirm_messages", true);
 	}
 
+	public boolean allowMessageCorrection() {
+		return getPreferences().getBoolean("allow_message_correction", true);
+	}
+
 	public boolean sendChatStates() {
 		return getPreferences().getBoolean("chat_states", false);
 	}
@@ -2699,7 +2726,7 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 		return null;
 	}
 
-	public void markRead(final Conversation conversation) {
+	public boolean markRead(final Conversation conversation) {
 		mNotificationService.clear(conversation);
 		final List<Message> readMessages = conversation.markRead();
 		if (readMessages.size() > 0) {
@@ -2712,8 +2739,11 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 				}
 			};
 			mDatabaseExecutor.execute(runnable);
+			updateUnreadCountBadge();
+			return true;
+		} else {
+			return false;
 		}
-		updateUnreadCountBadge();
 	}
 
 	public synchronized void updateUnreadCountBadge() {
@@ -2731,7 +2761,9 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 
 	public void sendReadMarker(final Conversation conversation) {
 		final Message markable = conversation.getLatestMarkableMessage();
-		this.markRead(conversation);
+		if (this.markRead(conversation)) {
+			updateConversationUi();
+		}
 		if (confirmMessages() && markable != null && markable.getRemoteMsgId() != null) {
 			Log.d(Config.LOGTAG, conversation.getAccount().getJid().toBareJid() + ": sending read marker to " + markable.getCounterpart().toString());
 			Account account = conversation.getAccount();
@@ -2739,7 +2771,6 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 			MessagePacket packet = mMessageGenerator.confirm(account, to, markable.getRemoteMsgId());
 			this.sendMessagePacket(conversation.getAccount(), packet);
 		}
-		updateConversationUi();
 	}
 
 	public SecureRandom getRNG() {
@@ -2858,7 +2889,7 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 
 	private void refreshAllGcmTokens() {
 		for(Account account : getAccounts()) {
-			if (account.isOnlineAndConnected() && mPushManagementService.pushAvailable(account)) {
+			if (account.isOnlineAndConnected() && mPushManagementService.available(account)) {
 				mPushManagementService.registerPushTokenOnServer(account);
 			}
 		}
