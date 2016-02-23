@@ -1824,9 +1824,11 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 					fetchConferenceConfiguration(conversation);
 				}
 			});
-
+			updateConversationUi();
 		} else {
 			account.pendingConferenceJoins.add(conversation);
+			conversation.resetMucOptions();
+			updateConversationUi();
 		}
 	}
 
@@ -2156,6 +2158,11 @@ public class XmppConnectionService extends Service implements OnPhoneContactsLoa
 
 	public void updateMessage(Message message) {
 		databaseBackend.updateMessage(message);
+		updateConversationUi();
+	}
+
+	public void updateMessage(Message message, String uuid) {
+		databaseBackend.updateMessage(message, uuid);
 		updateConversationUi();
 	}
 
