@@ -39,3 +39,5 @@ proguard/
 
 import-summary.txt
 .navigation/
+*.json
+*.gradle
