@@ -45,7 +45,7 @@ public class Contact implements ListItem, Blockable {
 	protected String photoUri;
 	protected JSONObject keys = new JSONObject();
 	protected JSONArray groups = new JSONArray();
-	protected Presences presences = new Presences();
+	protected final Presences presences = new Presences();
 	protected Account account;
 	protected Avatar avatar;
 
@@ -118,6 +118,17 @@ public class Contact implements ListItem, Blockable {
 			return jid.getLocalpart();
 		} else {
 			return jid.getDomainpart();
+		}
+	}
+
+	@Override
+	public String getDisplayJid() {
+		if (Config.LOCK_DOMAINS_IN_CONVERSATIONS && jid != null && jid.getDomainpart().equals(Config.DOMAIN_LOCK)) {
+			return jid.getLocalpart();
+		} else if (jid != null) {
+			return jid.toString();
+		} else {
+			return null;
 		}
 	}
 
@@ -220,10 +231,6 @@ public class Contact implements ListItem, Blockable {
 
 	public Presences getPresences() {
 		return this.presences;
-	}
-
-	public void setPresences(Presences pres) {
-		this.presences = pres;
 	}
 
 	public void updatePresence(final String resource, final Presence presence) {
@@ -386,11 +393,13 @@ public class Contact implements ListItem, Blockable {
 					this.resetOption(Options.TO);
 					this.setOption(Options.FROM);
 					this.resetOption(Options.PREEMPTIVE_GRANT);
+					this.resetOption(Options.PENDING_SUBSCRIPTION_REQUEST);
 					break;
 				case "both":
 					this.setOption(Options.TO);
 					this.setOption(Options.FROM);
 					this.resetOption(Options.PREEMPTIVE_GRANT);
+					this.resetOption(Options.PENDING_SUBSCRIPTION_REQUEST);
 					break;
 				case "none":
 					this.resetOption(Options.FROM);
